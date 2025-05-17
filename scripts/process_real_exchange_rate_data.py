@@ -58,7 +58,7 @@ def rebase_index_columns(df_input, base_date_str, index_column_keyword="Index"):
             
             # Update the column name to reflect new base period
             if "(Dec-95=100)" in col_name:
-                new_col_name = col_name.replace("(Dec-95=100)", "(Dec-99=100)")
+                new_col_name = col_name.replace("(Dec-95=100)", "(Dec-09=100)")
                 df.rename(columns={col_name: new_col_name}, inplace=True)
                 logger.info(f"Updated column name from {col_name} to {new_col_name}")
             
@@ -118,7 +118,7 @@ def process_reer_data(input_path, output_path):
             new_column_headers.append(" - ".join(clean_parts))
 
         if df.shape[0] < 4:
-            logger.warning("No actual data after headers? What a waste of time.")
+            logger.warning("No actual data after headers.")
             return
             
         data_df = df.iloc[3:].copy()
@@ -144,14 +144,14 @@ def process_reer_data(input_path, output_path):
             logger.warning(f"Failed to reformat Date column: {e}. Proceeding with original Date format.")
 
         logger.info("Time to rebase these indices...")
-        data_df = rebase_index_columns(data_df, base_date_str="12-1999", index_column_keyword="Index")
+        data_df = rebase_index_columns(data_df, base_date_str="12-2009", index_column_keyword="Index")
 
         # Ditch the columns with "previous" - can be added manually later in an easier manner
         data_df = data_df.loc[:, ~data_df.columns.str.contains('previous')]
 
         # Remove first 48 rows, first 4 years of data. 
         # data_df = data_df[data_df['Date'] > "12-1999"] <-- This is shit doesn't work and messes up the date index
-        data_df = data_df.iloc[48:]
+        data_df = data_df.iloc[168:]
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         data_df.to_excel(output_path, index=False)

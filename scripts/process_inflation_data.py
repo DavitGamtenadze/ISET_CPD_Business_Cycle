@@ -1,6 +1,9 @@
+"""This process is Old, we should use inflation data from 2010 and onwards.
+
+Incase we figure out how to get monthly YoY growth rates for years 2000-2010, this will be useful"""
 import pandas as pd
 import os
-import logging # To log events in the script
+import logging
 
 logger = logging.getLogger(__name__)
 
