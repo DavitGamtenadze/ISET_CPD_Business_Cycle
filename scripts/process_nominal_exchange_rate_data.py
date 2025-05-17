@@ -98,13 +98,7 @@ def process_neer_data(input_path, output_path):
             if pd.notna(base_value) and base_value != 0:
                 logger.info(f"Manually rebasing column to make 12-1999 = 100. Original base value: {base_value}")
                 data_df[neer_columns[0]] = data_df[neer_columns[0]] / base_value * 100
-                
-                # Update column name to reflect new base
-                col = neer_columns[0]
-                if "(Dec-95=100)" in col or "Dec-1995=100" in col:
-                    new_col_name = col.replace("(Dec-95=100)", "(Dec-99=100)").replace("Dec-1995=100", "Dec-1999=100")
-                    data_df.rename(columns={col: new_col_name}, inplace=True)
-                    logger.info(f"Updated column name from {col} to {new_col_name}")
+                data_df.rename(columns={neer_columns[0]: "NEER (Dec-1999=100)"}, inplace=True)
             else:
                 logger.warning(f"Cannot rebase column due to invalid base value: {base_value}")
 
