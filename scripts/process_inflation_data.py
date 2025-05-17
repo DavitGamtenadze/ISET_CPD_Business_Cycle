@@ -149,7 +149,7 @@ def process_inflation_data(input_path, output_path):
 if __name__ == '__main__':
     # Start the logger to show everybug
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
+    logging.basicConfig(filename='logs/process_inflation_data.log', level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     input_file = os.path.join(project_root, 'data', 'preliminary_data', 'georgia_monthly_inflation_2000_2003.xlsx')
     output_file = os.path.join(project_root, 'data', 'processed_data', 'georgia_monthly_inflation_2000_2003_processed.xlsx')
