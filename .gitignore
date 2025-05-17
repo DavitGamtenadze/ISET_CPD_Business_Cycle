@@ -26,4 +26,4 @@ poetry.lock
 *.swp 
 
 # Data files
-data/*
+data/preliminary_data/*
