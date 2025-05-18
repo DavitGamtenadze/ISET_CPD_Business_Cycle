@@ -144,14 +144,14 @@ def process_reer_data(input_path, output_path):
             logger.warning(f"Failed to reformat Date column: {e}. Proceeding with original Date format.")
 
         logger.info("Time to rebase these indices...")
-        data_df = rebase_index_columns(data_df, base_date_str="12-2009", index_column_keyword="Index")
+        data_df = rebase_index_columns(data_df, base_date_str="12-2010", index_column_keyword="Index")
 
         # Ditch the columns with "previous" - can be added manually later in an easier manner
         data_df = data_df.loc[:, ~data_df.columns.str.contains('previous')]
 
         # Remove first 48 rows, first 4 years of data. 
         # data_df = data_df[data_df['Date'] > "12-1999"] <-- This is shit doesn't work and messes up the date index
-        data_df = data_df.iloc[168:]
+        data_df = data_df.iloc[180:]
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         data_df.to_excel(output_path, index=False)

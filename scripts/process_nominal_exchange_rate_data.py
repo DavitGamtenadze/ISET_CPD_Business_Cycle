@@ -87,24 +87,24 @@ def process_neer_data(input_path, output_path):
         data_df = data_df[['Date'] + list(neer_columns)]
 
         # Manual rebasing - find the base row (12-1999)
-        base_row = data_df[data_df['Date'] == '12-2009']
+        base_row = data_df[data_df['Date'] == '12-2010']
         
         if base_row.empty:
-            logger.warning("Base date '12-2009' not found in the data. Cannot rebase.")
+            logger.warning("Base date '12-2010' not found in the data. Cannot rebase.")
         else:
             # Get base value for the NEER column
             base_value = base_row[neer_columns[0]].iloc[0]
             
             if pd.notna(base_value) and base_value != 0:
-                logger.info(f"Manually rebasing column to make 12-2009 = 100. Original base value: {base_value}")
+                logger.info(f"Manually rebasing column to make 12-2010 = 100. Original base value: {base_value}")
                 data_df[neer_columns[0]] = data_df[neer_columns[0]] / base_value * 100
-                data_df.rename(columns={neer_columns[0]: "NEER (Dec-2009=100)"}, inplace=True)
+                data_df.rename(columns={neer_columns[0]: "NEER (Dec-2010=100)"}, inplace=True)
             else:
                 logger.warning(f"Cannot rebase column due to invalid base value: {base_value}")
 
 
         # Remove first 46 rows, first 4 years of data. 
-        data_df = data_df.iloc[166:]
+        data_df = data_df.iloc[178:]
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         data_df.to_excel(output_path, index=False)
