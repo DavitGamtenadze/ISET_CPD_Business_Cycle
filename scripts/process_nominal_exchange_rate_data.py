@@ -116,8 +116,15 @@ def process_neer_data(input_path, output_path):
         logger.error(f"An error occurred during NEER data processing: {e}", exc_info=True)
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    logging.basicConfig(filename='logs/process_nominal_exchange_rate_data.log', level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    os.makedirs('logs', exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("logs/process_nominal_exchange_rate_data.log"),
+            logging.StreamHandler()
+        ]
+    )
 
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     

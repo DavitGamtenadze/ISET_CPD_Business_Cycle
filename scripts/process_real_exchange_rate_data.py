@@ -163,8 +163,15 @@ def process_reer_data(input_path, output_path):
         logger.error(f"An error occurred during REER data processing: {e}", exc_info=True)
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    logging.basicConfig(filename='logs/process_real_exchange_rate_data.log', level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    os.makedirs('logs', exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("logs/process_real_exchange_rate_data.log"),
+            logging.StreamHandler()
+        ]
+    )
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
     input_file = os.path.join(project_root, 'data', 'preliminary_data', 'georgia_real_effective_exchange_rate.xlsx')
