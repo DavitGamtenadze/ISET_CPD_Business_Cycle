@@ -56,11 +56,12 @@ def rebase_index_columns(df_input, base_date_str, index_column_keyword="Index"):
             logger.info(f"Rebasing '{col_name}'. Base value: {base_value}")
             df[col_name] = (df[col_name] / base_value) * 100
             
-            # Update the column name to reflect new base period
-            if "(Dec-95=100)" in col_name:
-                new_col_name = col_name.replace("(Dec-95=100)", "(Dec-09=100)")
-                df.rename(columns={col_name: new_col_name}, inplace=True)
-                logger.info(f"Updated column name from {col_name} to {new_col_name}")
+
+            new_col_name = col_name.replace("(Dec-95=100)", "(Dec-10=100)")
+            if "GEL/EUR" in col_name:
+                new_col_name = col_name.replace("(Dec-2001=100)", "(Dec-10=100)")
+            df.rename(columns={col_name: new_col_name}, inplace=True)
+            logger.info(f"Updated column name from {col_name} to {new_col_name}")
             
             rebased_cols_count += 1
             
