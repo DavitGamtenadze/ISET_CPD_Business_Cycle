@@ -12,8 +12,10 @@ openpyxl = "^3.1.0"
 statsmodels = "^0.14.4"
 matplotlib = "^3.8.0"
 seaborn = "^0.13.2"
-numpy = "^2.2.5"
-tempdisagg = "^0.2.13 "
+numpy = "^2.2.6"
+tempdisagg = "^0.2.13"
+pykalman = "^0.9.7"
+stumpy = "^1.11.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
