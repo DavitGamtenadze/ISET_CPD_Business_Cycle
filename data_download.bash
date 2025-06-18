@@ -61,6 +61,22 @@ print_step "Downloading monthly GDP real growth rates (2012-2025)..."
 curl -L -o georgia_monthly_gdp_real_growth_rates_2012_2025.xlsx "https://cpd-iset-ba-thesis.s3.eu-north-1.amazonaws.com/GDP_real_growth.xlsx"
 print_success "GDP real growth rates downloaded"
 
+print_step "Downloading monthly weighted deposit interest rates..."
+curl -L -o georgia_monthly_weighted_deposit_interest_rates.xlsx "https://cpd-iset-ba-thesis.s3.eu-north-1.amazonaws.com/annual-weighted-deposit-interest-rates-dwirgeo.xlsx"
+print_success "Weighted deposit interest rates downloaded"
+
+print_step "Downloading Business Confidence Index..."
+curl -L -o georgia_monthly_business_confidence_index.xlsx "https://cpd-iset-ba-thesis.s3.eu-north-1.amazonaws.com/BCI.xlsx"
+print_success "Business Confidence Index downloaded"
+
+print_step "Downloading monetary policy rate changes..."
+curl -L -o georgia_monthly_monetary_policy_rate_changes.xlsx "https://cpd-iset-ba-thesis.s3.eu-north-1.amazonaws.com/monetary_policy_rates.xlsx"
+print_success "Monetary policy rate changes downloaded"
+
+print_step "Downloading monthly unemployment rate..."
+curl -L -o georgia_monthly_unemployment_rate.xlsx "https://cpd-iset-ba-thesis.s3.eu-north-1.amazonaws.com/Unemployment_Rate.xlsx"
+print_success "Unemployment rate downloaded"
+
 print_step "Moving files to preliminary data directory..."
 mv *.xlsx data/preliminary_data/
 print_success "All files moved to data/preliminary_data/"
