@@ -28,6 +28,8 @@ poetry.lock
 # Data files
 data/preliminary_data/*
 data/processed_data/*
+data/monthly_data/*
+data/quarterly_data/*
 
 # Output files
 logs/*

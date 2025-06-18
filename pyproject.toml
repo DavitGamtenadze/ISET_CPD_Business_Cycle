@@ -16,6 +16,7 @@ numpy = "^2.2.6"
 tempdisagg = "^0.2.13"
 pykalman = "^0.9.7"
 stumpy = "^1.11.0"
+jupyter = "^1.1.1"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
