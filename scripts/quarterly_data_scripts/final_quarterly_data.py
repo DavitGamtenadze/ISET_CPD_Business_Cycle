@@ -253,8 +253,8 @@ def create_final_quarterly_data(datasets):
         'GDP in mil. USD_monthly',
         'Monetary_Policy_Rate_Percent',
         'Monetary_Policy_Rate_Decimal',
-        'Business_Climate',
-        'Business_expectation',
+        'Business Confidence Index (BCI)',
+        'Sales Price Expectations Index',
     ]
 
     # Add exchange rate columns that exist
