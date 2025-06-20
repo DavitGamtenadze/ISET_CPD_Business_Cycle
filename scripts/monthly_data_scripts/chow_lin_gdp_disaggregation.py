@@ -255,7 +255,7 @@ def process_real_gdp_growth_data(df):
 
 
 def load_data() -> tuple:
-    logger.info("Loading data files...")
+    logger.info("Loading data files")
     
     # Use absolute paths from project root
     project_root = Path(__file__).parent.parent.parent
@@ -265,7 +265,7 @@ def load_data() -> tuple:
         real_gdp_path = project_root / 'data' / 'preliminary_data' / 'georgia_monthly_gdp_real_growth_rates_2012_2025.xlsx'
         real_gdp_raw = pd.read_excel(real_gdp_path)
         real_gdp_growth = process_real_gdp_growth_data(real_gdp_raw)
-        logger.info("Real GDP growth rates (2012+) loaded and processed successfully")
+        logger.info("Real GDP growth rates loaded")
     except FileNotFoundError:
         logger.error("Real GDP growth rates file not found")
         raise
@@ -275,7 +275,7 @@ def load_data() -> tuple:
         inflation_data = pd.read_excel(inflation_path)
         inflation_data['Date'] = pd.to_datetime(inflation_data['Date'])
         inflation_data['Date'] = inflation_data['Date'].dt.to_period('M').apply(lambda x: x.start_time)
-        logger.info("Inflation data loaded successfully")
+        logger.info("Inflation data loaded")
     except FileNotFoundError:
         logger.error("Inflation data file not found")
         raise
@@ -283,7 +283,6 @@ def load_data() -> tuple:
     try:
         quarterly_path = project_root / 'data' / 'processed_data' / 'georgia_quarterly_gdp_processed.xlsx'
         quarterly_gdp = pd.read_excel(quarterly_path)
-        logger.info(f"Data columns: {quarterly_gdp.columns}")
         
         # Remove full year entries (2010, 2011, etc.) as requested
         quarterly_gdp = quarterly_gdp[quarterly_gdp['Date'].astype(str).str.len() > 4]
@@ -291,10 +290,8 @@ def load_data() -> tuple:
         # Remove any rows that are just year numbers
         quarterly_gdp = quarterly_gdp[~quarterly_gdp['Date'].astype(str).str.match(r'^\d{4}$')]
         
-        logger.info(f"After filtering: {quarterly_gdp.shape}")
-        logger.info(f"Date samples: {quarterly_gdp['Date'].head().tolist()}")
+        logger.info(f"Quarterly GDP data loaded: {quarterly_gdp.shape}")
         
-        logger.info("Quarterly GDP data loaded successfully")
     except FileNotFoundError:
         logger.error("Quarterly GDP data file not found")
         raise
@@ -304,7 +301,7 @@ def load_data() -> tuple:
 
 def prepare_merged_data(real_gdp_growth: pd.DataFrame, 
                        inflation_data: pd.DataFrame) -> pd.DataFrame:
-    logger.info("Preparing merged data...")
+    logger.info("Preparing merged data")
     
     inflation_data['Date'] = pd.to_datetime(inflation_data['Date'])
     real_gdp_growth['Date'] = pd.to_datetime(real_gdp_growth['Date'])
@@ -316,14 +313,12 @@ def prepare_merged_data(real_gdp_growth: pd.DataFrame,
     
     merged_data = pd.merge(real_gdp_subset, inflation_subset, on='Date', how='left')
     
-    logger.info("Merged data prepared successfully with pre-calculated real GDP growth")
-    logger.info(f"Date range: {merged_data['Date'].min()} to {merged_data['Date'].max()}")
-    logger.info(f"Real GDP growth observations: {len(merged_data)}")
+    logger.info(f"Merged data prepared: {len(merged_data)} observations")
     return merged_data
 
 
 def main():
-    logger.info("Starting Chow-Lin GDP disaggregation process...")
+    logger.info("Starting Chow-Lin GDP disaggregation")
     
     try:
         real_gdp_growth, inflation_data, quarterly_gdp = load_data()
@@ -340,7 +335,7 @@ def main():
         
         # Check which columns exist
         existing_columns = [col for col in gdp_columns if col in quarterly_gdp.columns]
-        logger.info(f"Using GDP columns: {existing_columns}")
+        logger.info(f"Using {len(existing_columns)} GDP columns")
         
         quarterly_gdp = quarterly_gdp[existing_columns]
         
@@ -370,7 +365,7 @@ def main():
         output_dir.mkdir(parents=True, exist_ok=True)
         result_df.to_excel(output_dir / 'georgia_monthly_gdp_chow_lin.xlsx', index=False)
         
-        logger.info("Chow-Lin GDP disaggregation completed successfully!")
+        logger.info("Chow-Lin disaggregation completed")
         logger.info(f"Results saved to {output_dir}")
         logger.info(f"Models saved to {models_dir}")
         
@@ -388,7 +383,7 @@ def main():
         print("\n" + "="*60)
         
     except Exception as e:
-        logger.error(f"Error in main process: {str(e)}")
+        logger.error(f"Disaggregation failed: {str(e)}")
         raise
 
 

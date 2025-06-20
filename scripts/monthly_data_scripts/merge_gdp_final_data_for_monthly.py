@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def load_exchange_rate_data():
     """Load NEER and REER exchange rate data."""
-    logger.info("Loading exchange rate data...")
+    logger.info("Loading exchange rate data")
     
     try:
         project_root = Path(__file__).parent.parent.parent
@@ -34,26 +34,25 @@ def load_exchange_rate_data():
         neer_data['Date'] = pd.to_datetime(neer_data['Date'])
         reer_data['Date'] = pd.to_datetime(reer_data['Date'])
         
-        logger.info(f"NEER data: {len(neer_data)} records")
-        logger.info(f"REER data: {len(reer_data)} records")
+        logger.info(f"NEER: {len(neer_data)} records, REER: {len(reer_data)} records")
         
         return neer_data, reer_data
         
     except FileNotFoundError as e:
-        logger.error(f"Exchange rate data file not found: {e}")
+        logger.error(f"Exchange rate files not found: {e}")
         raise
 
 
 def load_monetary_policy_data():
     """Load monthly monetary policy rate data."""
-    logger.info("Loading monthly monetary policy rate data...")
+    logger.info("Loading monetary policy data")
     
     try:
         project_root = Path(__file__).parent.parent.parent
         monetary_path = project_root / 'data' / 'processed_data' / 'georgia_monthly_monetary_policy_rates.xlsx'
         
         if not monetary_path.exists():
-            logger.warning("Monthly monetary policy rates file not found, attempting to create from quarterly data...")
+            logger.warning("Monthly monetary policy file not found, creating from quarterly")
             # Try to load quarterly data and convert
             quarterly_path = project_root / 'data' / 'processed_data' / 'georgia_quarterly_monetary_policy_rates.xlsx'
             if quarterly_path.exists():
@@ -62,7 +61,7 @@ def load_monetary_policy_data():
                 if monthly_rates is not None:
                     # Save for future use
                     monthly_rates.to_excel(monetary_path, index=False)
-                    logger.info("Created monthly monetary policy rates from quarterly data")
+                    logger.info("Created monthly monetary rates from quarterly")
                     return monthly_rates
             
             logger.warning("No monetary policy data available")
@@ -80,11 +79,11 @@ def load_monetary_policy_data():
         # Keep only necessary columns
         monetary_data = monetary_data[['Date', 'Monetary_Policy_Rate']]
         
-        logger.info(f"Monetary policy data: {len(monetary_data)} records")
+        logger.info(f"Monetary policy: {len(monetary_data)} records")
         return monetary_data
         
     except Exception as e:
-        logger.error(f"Error loading monetary policy data: {e}")
+        logger.error(f"Monetary policy data error: {e}")
         return None
 
 
@@ -115,23 +114,23 @@ def convert_quarterly_to_monthly_monetary(quarterly_df):
         monthly_df = pd.DataFrame(monthly_rates)
         monthly_df = monthly_df.sort_values('Date').reset_index(drop=True)
         
-        logger.info(f"Converted {len(monthly_df)} monthly monetary policy rate observations")
+        logger.info(f"Converted {len(monthly_df)} monthly observations")
         return monthly_df
         
     except Exception as e:
-        logger.error(f"Error converting quarterly to monthly monetary data: {e}")
+        logger.error(f"Quarterly to monthly conversion failed: {e}")
         return None
 
 
 def load_gdp_data():
     """Load the Chow-Lin disaggregated GDP data."""
-    logger.info("Loading Chow-Lin GDP data...")
+    logger.info("Loading GDP data")
     
     try:
         project_root = Path(__file__).parent.parent.parent
         gdp_path = project_root / 'data' / 'processed_data' / 'georgia_monthly_gdp_chow_lin.xlsx'
         gdp_data = pd.read_excel(gdp_path)
-        logger.info(f"GDP data: {len(gdp_data)} records")
+        logger.info(f"GDP: {len(gdp_data)} records")
         return gdp_data
         
     except FileNotFoundError as e:
@@ -141,29 +140,27 @@ def load_gdp_data():
 
 def merge_data(gdp_data, neer_data, reer_data, monetary_data=None):
     """Merge GDP data with exchange rate data and monetary policy data."""
-    logger.info("Merging GDP data with exchange rate and monetary policy data...")
+    logger.info("Merging datasets")
     
     # Merge NEER data with GDP data
     merged_data = gdp_data.merge(neer_data, on='Date', how='left')
-    logger.info(f"After NEER merge: {len(merged_data)} records")
     
     # Merge REER data with the result
     merged_data = merged_data.merge(reer_data, on='Date', how='left')
-    logger.info(f"After REER merge: {len(merged_data)} records")
     
     # Merge monetary policy data if available
     if monetary_data is not None:
         merged_data = merged_data.merge(monetary_data, on='Date', how='left')
-        logger.info(f"After monetary policy merge: {len(merged_data)} records")
+        logger.info(f"Merged {len(merged_data)} records (with monetary policy)")
     else:
-        logger.warning("No monetary policy data to merge")
+        logger.info(f"Merged {len(merged_data)} records (no monetary policy)")
     
     return merged_data
 
 
 def clean_data(merged_data):
     """Remove unnecessary columns from the merged dataset."""
-    logger.info("Cleaning data - removing unnecessary columns...")
+    logger.info("Cleaning data")
     
     columns_to_drop = [
         'q_str', 
@@ -175,35 +172,37 @@ def clean_data(merged_data):
     
     # Check which columns exist before dropping
     existing_columns = [col for col in columns_to_drop if col in merged_data.columns]
-    missing_columns = [col for col in columns_to_drop if col not in merged_data.columns]
-    
-    if missing_columns:
-        logger.warning(f"Columns not found in data: {missing_columns}")
     
     if existing_columns:
         cleaned_data = merged_data.drop(existing_columns, axis=1)
-        logger.info(f"Dropped columns: {existing_columns}")
+        logger.info(f"Dropped {len(existing_columns)} columns")
     else:
         cleaned_data = merged_data
-        logger.warning("No columns were dropped")
+        logger.warning("No columns dropped")
     
-    logger.info(f"Final dataset shape: {cleaned_data.shape}")
-    logger.info(f"Final columns: {list(cleaned_data.columns)}")
+    # Divide Real_GDP_Growth and Business_Climate by 100
+    if 'Real_GDP_Growth' in cleaned_data.columns:
+        cleaned_data['Real_GDP_Growth'] = cleaned_data['Real_GDP_Growth'] / 100.0
+        logger.info("Converted Real_GDP_Growth to decimal format")
+    
+    if 'Business_Climate' in cleaned_data.columns:
+        cleaned_data['Business_Climate'] = cleaned_data['Business_Climate'] / 100.0
+        logger.info("Converted Business_Climate to decimal format")
+    
+    logger.info(f"Final shape: {cleaned_data.shape}")
     
     return cleaned_data
 
 
 def save_data(data, output_path):
     """Save the final dataset."""
-    logger.info(f"Saving final dataset to {output_path}")
-    
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     # Save as Excel only
     excel_path = output_path.with_suffix('.xlsx')
     data.to_excel(excel_path, index=False)
-    logger.info(f"Excel file saved: {excel_path}")
+    logger.info(f"Saved: {excel_path}")
     
     return excel_path
 
@@ -235,7 +234,7 @@ def display_summary(data):
 
 def main():
     """Main function to process and merge GDP and exchange rate data."""
-    logger.info("Starting GDP and exchange rate data merger...")
+    logger.info("Starting GDP/exchange rate merger")
     
     try:
         # Load data
@@ -251,18 +250,18 @@ def main():
         
         # Save data
         project_root = Path(__file__).parent.parent.parent
-        output_path = project_root / 'data' / 'processed_data' / 'final_gdp_data_for_monthly.xlsx'
+        output_path = project_root / 'data' / 'processed_data' / 'final_gdp_exchange_rate_data'
         excel_path = save_data(final_data, output_path)
         
         # Display summary
         display_summary(final_data)
         
-        logger.info("GDP and exchange rate data merger completed successfully!")
+        logger.info("Merger completed")
         print(f"\nFinal file saved:")
         print(f"  Excel: {excel_path}")
         
     except Exception as e:
-        logger.error(f"Error in main process: {str(e)}")
+        logger.error(f"Merger failed: {str(e)}")
         raise
 
 

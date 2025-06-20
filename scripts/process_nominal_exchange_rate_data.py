@@ -11,21 +11,20 @@ def process_neer_data(input_path, output_path):
     Specifically keeps only the "NEER (Dec-1995=100)" column and removes the first 49 rows.
     The output will have 12-1999 rebased to 100, with all other values as percentages relative to that.
     """
-    logger.info(f"Let's process some NEER data from {input_path}")
+    logger.info(f"Processing NEER data: {input_path}")
 
     SKIP_ROWS = 2  # Skip the useless stuff at the top
 
     try:
-        logger.debug(f"Reading Excel file, skipping {SKIP_ROWS} rows.")
         df = pd.read_excel(input_path, skiprows=SKIP_ROWS, header=None)
 
         if df.empty:
-            logger.warning("DataFrame is empty after reading the Excel file. No data to process.")
+            logger.warning("Empty file")
             return
 
         # Excel structure similar to REER data
         if df.shape[0] < 3:
-            logger.error(f"Not enough rows for headers. WHAT?")
+            logger.error(f"Insufficient header rows")
             return
         
         df.rename(columns={0: "Date"}, inplace=True)
@@ -49,30 +48,29 @@ def process_neer_data(input_path, output_path):
             new_column_headers.append(" - ".join(clean_parts))
 
         if df.shape[0] < 4:
-            logger.warning("No actual data after.")
+            logger.warning("No data rows found")
             return
             
         data_df = df.iloc[3:].copy()
         
         if data_df.empty:
-            logger.warning("Extracted data section is empty.")
+            logger.warning("Empty data section")
             return
 
         data_df.columns = ['Date'] + new_column_headers
         data_df = data_df.dropna(subset=['Date'], how='all').reset_index(drop=True)
 
         if data_df.empty:
-            logger.warning("Data is empty after dropping NaN Dates. No output will be generated.")
+            logger.warning("No valid dates")
             return
 
         # Format Date Column to MM-YYYY format
-        logger.info("Reformatting Date column to MM-YYYY format")
+        logger.info("Converting date format")
         try:
             data_df['Date'] = pd.to_datetime(data_df['Date'], errors='coerce')
             data_df['Date'] = data_df['Date'].dt.strftime('%m-%Y')
-            logger.info("Dates are now MM-YYYY. Much better.")
         except Exception as e:
-            logger.warning(f"Failed to reformat Date column: {e}. Proceeding with original format.")
+            logger.warning(f"Date conversion failed: {e}")
 
         # Keep only the NEER (Dec-1995=100) column and date
         neer_columns = [col for col in data_df.columns if "NEER" in col and "Dec-1995=100" in col]
@@ -80,9 +78,9 @@ def process_neer_data(input_path, output_path):
         if not neer_columns:
             # Fallback to any NEER column if the specific one isn't found
             neer_columns = data_df.columns[data_df.columns.str.contains('NEER', case=False, na=False)]
-            logger.warning(f"Specific NEER (Dec-1995=100) column not found. Using available NEER columns instead: {neer_columns}")
+            logger.warning(f"Using fallback NEER columns: {neer_columns}")
         else:
-            logger.info(f"Found specific NEER column: {neer_columns}")
+            logger.info(f"Found NEER column: {neer_columns[0]}")
             
         data_df = data_df[['Date'] + list(neer_columns)]
 
@@ -90,17 +88,17 @@ def process_neer_data(input_path, output_path):
         base_row = data_df[data_df['Date'] == '12-2011']
         
         if base_row.empty:
-            logger.warning("Base date '12-2011' not found in the data. Cannot rebase.")
+            logger.warning("Base date 12-2011 not found")
         else:
             # Get base value for the NEER column
             base_value = base_row[neer_columns[0]].iloc[0]
             
             if pd.notna(base_value) and base_value != 0:
-                logger.info(f"Manually rebasing column to make 12-2011 = 100. Original base value: {base_value}")
+                logger.info(f"Rebasing to Dec-2011=100 (base: {base_value:.2f})")
                 data_df[neer_columns[0]] = data_df[neer_columns[0]] / base_value * 100
                 data_df.rename(columns={neer_columns[0]: "NEER (Dec-2011=100)"}, inplace=True)
             else:
-                logger.warning(f"Cannot rebase column due to invalid base value: {base_value}")
+                logger.warning(f"Invalid base value: {base_value}")
 
 
         # Remove first 46 rows, first 4 years of data. 
@@ -108,12 +106,12 @@ def process_neer_data(input_path, output_path):
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         data_df.to_excel(output_path, index=False)
-        logger.info(f"Done! Saved to {output_path}")
+        logger.info(f"Saved: {output_path}")
 
     except FileNotFoundError:
-        logger.error(f"Input file not found at {input_path}")
+        logger.error(f"File not found: {input_path}")
     except Exception as e:
-        logger.error(f"An error occurred during NEER data processing: {e}", exc_info=True)
+        logger.error(f"Processing failed: {e}")
 
 if __name__ == '__main__':
     os.makedirs('logs', exist_ok=True)
@@ -131,6 +129,6 @@ if __name__ == '__main__':
     input_file = os.path.join(project_root, 'data', 'preliminary_data', 'georgia_effective_nominal_exchange_rate.xlsx')
     output_file = os.path.join(project_root, 'data', 'processed_data', 'georgia_neer_data_cleaned_processed.xlsx')
     
-    logger.info(f"Starting NEER data processing script for input: {input_file}")
+    logger.info(f"Starting NEER processing")
     process_neer_data(input_file, output_file)
-    logger.info("Completed NEER data processing script.")
+    logger.info("Completed")

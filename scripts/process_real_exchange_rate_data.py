@@ -17,17 +17,17 @@ def rebase_index_columns(df_input, base_date_str, index_column_keyword="Index"):
     Returns:
         pd.DataFrame: DataFrame with index columns rebased, or original if base date not found.
     """
-    logger.info(f"Attempting to rebase index columns using base date: {base_date_str}")
+    logger.info(f"Rebasing indices to {base_date_str}")
     df = df_input.copy() # Work on a copy
 
     if 'Date' not in df.columns:
-        logger.error("'Date' column not found in DataFrame. Cannot rebase.")
+        logger.error("Missing Date column")
         return df_input # Return original if 'Date' column is missing
 
     base_row_df = df[df['Date'].astype(str) == str(base_date_str)]
 
     if base_row_df.empty:
-        logger.warning(f"'{base_date_str}'. Returning data as-is.")
+        logger.warning(f"Base date {base_date_str} not found")
         return df_input
     
     base_row_values = base_row_df.iloc[0]
@@ -35,25 +35,24 @@ def rebase_index_columns(df_input, base_date_str, index_column_keyword="Index"):
     rebased_cols_count = 0
     for col_name in df.columns:
         if index_column_keyword.lower() in col_name.lower():
-            logger.debug(f"Processing column '{col_name}' for rebasing.")
             # Ensure the column is numeric, converting non-numeric to NaN
             original_dtype = df[col_name].dtype
             df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
             
             if df[col_name].isnull().all():
-                logger.warning(f"'{col_name}' is all NaN after conversion. Skipping this one.")
+                logger.warning(f"Column {col_name} all NaN, skipping")
                 continue
 
             base_value = base_row_values.get(col_name)
 
             if pd.isna(base_value):
-                logger.warning(f"Base value for '{col_name}' is NaN. Moving on...")
+                logger.warning(f"Base value NaN for {col_name}")
                 continue
             if base_value == 0:
-                logger.warning(f"Can't divide by zero for '{col_name}'.")
+                logger.warning(f"Base value zero for {col_name}")
                 continue
             
-            logger.info(f"Rebasing '{col_name}'. Base value: {base_value}")
+            logger.info(f"Rebasing {col_name}")
             df[col_name] = (df[col_name] / base_value) * 100
             
 
@@ -61,14 +60,13 @@ def rebase_index_columns(df_input, base_date_str, index_column_keyword="Index"):
             if "GEL/EUR" in col_name:
                 new_col_name = col_name.replace("(Dec-2001=100)", "(Dec-11=100)")
             df.rename(columns={col_name: new_col_name}, inplace=True)
-            logger.info(f"Updated column name from {col_name} to {new_col_name}")
             
             rebased_cols_count += 1
             
     if rebased_cols_count > 0:
-        logger.info(f"Successfully rebased {rebased_cols_count} columns.")
+        logger.info(f"Rebased {rebased_cols_count} columns")
     else:
-        logger.info("No columns were rebased. Check your base date and index column keyword.")
+        logger.info("No columns rebased")
         
     return df
 
@@ -78,16 +76,15 @@ def process_reer_data(input_path, output_path):
     The script expects a specific multi-level header structure and transforms it
     into a clean DataFrame with proper column names.
     """
-    logger.info(f"Let's process some REER data from {input_path}")
+    logger.info(f"Processing REER data: {input_path}")
 
     SKIP_ROWS = 2  # Skip the useless stuff at the top
 
     try:
-        logger.debug(f"Reading Excel file, skipping {SKIP_ROWS} rows.")
         df = pd.read_excel(input_path, skiprows=SKIP_ROWS, header=None)
 
         if df.empty:
-            logger.warning("DataFrame is empty after reading the Excel file. No data to process.")
+            logger.warning("Empty file")
             return
 
         # Excel structure is a bit of a mess:
@@ -97,7 +94,7 @@ def process_reer_data(input_path, output_path):
         # Row 6+ -> Actual data, finally!
 
         if df.shape[0] < 3:
-            logger.error(f"Not enough rows for headers. WHAT?")
+            logger.error(f"Insufficient header rows")
             return
             
         main_titles_row = df.iloc[0].ffill()
@@ -119,32 +116,30 @@ def process_reer_data(input_path, output_path):
             new_column_headers.append(" - ".join(clean_parts))
 
         if df.shape[0] < 4:
-            logger.warning("No actual data after headers.")
+            logger.warning("No data rows found")
             return
             
         data_df = df.iloc[3:].copy()
         
         if data_df.empty:
-            logger.warning("Extracted data section is empty.")
+            logger.warning("Empty data section")
             return
 
         data_df.columns = ['Date'] + new_column_headers
         data_df = data_df.dropna(subset=['Date'], how='all').reset_index(drop=True)
 
         if data_df.empty:
-            logger.warning("Data is empty after dropping NaN Dates. No output will be generated.")
+            logger.warning("No valid dates")
             return
 
         # --- Format Date Column to MM-YYYY format ---
-        logger.info("Reformatting Date column to MM-YYYY format")
+        logger.info("Converting date format")
         try:
             data_df['Date'] = pd.to_datetime(data_df['Date'], errors='coerce')
             data_df['Date'] = data_df['Date'].dt.strftime('%m-%Y')
-            logger.info("Dates are now MM-YYYY. Much better.")
         except Exception as e:
-            logger.warning(f"Failed to reformat Date column: {e}. Proceeding with original Date format.")
+            logger.warning(f"Date conversion failed: {e}")
 
-        logger.info("Time to rebase these indices...")
         data_df = rebase_index_columns(data_df, base_date_str="12-2011", index_column_keyword="Index")
 
         # Ditch the columns with "previous" - can be added manually later in an easier manner
@@ -156,12 +151,12 @@ def process_reer_data(input_path, output_path):
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         data_df.to_excel(output_path, index=False)
-        logger.info(f"Done! Saved to {output_path}")
+        logger.info(f"Saved: {output_path}")
 
     except FileNotFoundError:
-        logger.error(f"Input file not found at {input_path}")
+        logger.error(f"File not found: {input_path}")
     except Exception as e:
-        logger.error(f"An error occurred during REER data processing: {e}", exc_info=True)
+        logger.error(f"Processing failed: {e}")
 
 if __name__ == '__main__':
     os.makedirs('logs', exist_ok=True)
@@ -178,6 +173,6 @@ if __name__ == '__main__':
     input_file = os.path.join(project_root, 'data', 'preliminary_data', 'georgia_real_effective_exchange_rate.xlsx')
     output_file = os.path.join(project_root, 'data', 'processed_data', 'georgia_reer_data_cleaned_processed.xlsx')
     
-    logger.info(f"Starting REER data processing script for input: {input_file}")
+    logger.info(f"Starting REER processing")
     process_reer_data(input_file, output_file)
-    logger.info("Completed REER data processing script.") 
+    logger.info("Completed") 
