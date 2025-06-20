@@ -57,9 +57,9 @@ def rebase_index_columns(df_input, base_date_str, index_column_keyword="Index"):
             df[col_name] = (df[col_name] / base_value) * 100
             
 
-            new_col_name = col_name.replace("(Dec-95=100)", "(Dec-10=100)")
+            new_col_name = col_name.replace("(Dec-95=100)", "(Dec-11=100)")
             if "GEL/EUR" in col_name:
-                new_col_name = col_name.replace("(Dec-2001=100)", "(Dec-10=100)")
+                new_col_name = col_name.replace("(Dec-2001=100)", "(Dec-11=100)")
             df.rename(columns={col_name: new_col_name}, inplace=True)
             logger.info(f"Updated column name from {col_name} to {new_col_name}")
             
@@ -145,7 +145,7 @@ def process_reer_data(input_path, output_path):
             logger.warning(f"Failed to reformat Date column: {e}. Proceeding with original Date format.")
 
         logger.info("Time to rebase these indices...")
-        data_df = rebase_index_columns(data_df, base_date_str="12-2010", index_column_keyword="Index")
+        data_df = rebase_index_columns(data_df, base_date_str="12-2011", index_column_keyword="Index")
 
         # Ditch the columns with "previous" - can be added manually later in an easier manner
         data_df = data_df.loc[:, ~data_df.columns.str.contains('previous')]

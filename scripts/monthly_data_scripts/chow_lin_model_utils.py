@@ -280,8 +280,6 @@ def create_new_predictions(quarterly_gdp_file: str,
         
         if output_path.suffix == '.xlsx':
             result_df.to_excel(output_path, index=False)
-        else:
-            result_df.to_csv(output_path, index=False)
         
         logger.info(f"Predictions saved to {output_path}")
         print(f"Successfully created predictions and saved to {output_path}")

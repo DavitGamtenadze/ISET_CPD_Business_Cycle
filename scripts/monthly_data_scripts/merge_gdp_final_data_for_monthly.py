@@ -44,6 +44,85 @@ def load_exchange_rate_data():
         raise
 
 
+def load_monetary_policy_data():
+    """Load monthly monetary policy rate data."""
+    logger.info("Loading monthly monetary policy rate data...")
+    
+    try:
+        project_root = Path(__file__).parent.parent.parent
+        monetary_path = project_root / 'data' / 'processed_data' / 'georgia_monthly_monetary_policy_rates.xlsx'
+        
+        if not monetary_path.exists():
+            logger.warning("Monthly monetary policy rates file not found, attempting to create from quarterly data...")
+            # Try to load quarterly data and convert
+            quarterly_path = project_root / 'data' / 'processed_data' / 'georgia_quarterly_monetary_policy_rates.xlsx'
+            if quarterly_path.exists():
+                quarterly_rates = pd.read_excel(quarterly_path)
+                monthly_rates = convert_quarterly_to_monthly_monetary(quarterly_rates)
+                if monthly_rates is not None:
+                    # Save for future use
+                    monthly_rates.to_excel(monetary_path, index=False)
+                    logger.info("Created monthly monetary policy rates from quarterly data")
+                    return monthly_rates
+            
+            logger.warning("No monetary policy data available")
+            return None
+        
+        monetary_data = pd.read_excel(monetary_path)
+        monetary_data['Date'] = pd.to_datetime(monetary_data['Date'])
+        
+        # Divide monetary policy rate by 100 to make it similar to inflation (decimal format)
+        if 'Monetary_Policy_Rate_Percent' in monetary_data.columns:
+            monetary_data['Monetary_Policy_Rate'] = monetary_data['Monetary_Policy_Rate_Percent'] / 100.0
+        elif 'Monetary_Policy_Rate_Decimal' in monetary_data.columns:
+            monetary_data['Monetary_Policy_Rate'] = monetary_data['Monetary_Policy_Rate_Decimal']
+        
+        # Keep only necessary columns
+        monetary_data = monetary_data[['Date', 'Monetary_Policy_Rate']]
+        
+        logger.info(f"Monetary policy data: {len(monetary_data)} records")
+        return monetary_data
+        
+    except Exception as e:
+        logger.error(f"Error loading monetary policy data: {e}")
+        return None
+
+
+def convert_quarterly_to_monthly_monetary(quarterly_df):
+    """Convert quarterly monetary policy rates to monthly format."""
+    try:
+        monthly_rates = []
+        
+        for _, row in quarterly_df.iterrows():
+            date_str = row['Date']  # e.g., "I 08"
+            quarter_roman, year_short = date_str.split()
+            
+            quarter_map = {'I': 1, 'II': 2, 'III': 3, 'IV': 4}
+            quarter = quarter_map[quarter_roman]
+            year = 2000 + int(year_short)
+            
+            # Create monthly rates for each quarter (3 months)
+            for month_offset in range(3):
+                month = (quarter - 1) * 3 + month_offset + 1
+                if month <= 12:
+                    date = pd.Timestamp(year=year, month=month, day=1)
+                    rate_percent = row.get('Monetary_Policy_Rate_Percent', row.get('Monetary_Policy_Rate', 0))
+                    monthly_rates.append({
+                        'Date': date,
+                        'Monetary_Policy_Rate': rate_percent / 100.0  # Convert to decimal
+                    })
+        
+        monthly_df = pd.DataFrame(monthly_rates)
+        monthly_df = monthly_df.sort_values('Date').reset_index(drop=True)
+        
+        logger.info(f"Converted {len(monthly_df)} monthly monetary policy rate observations")
+        return monthly_df
+        
+    except Exception as e:
+        logger.error(f"Error converting quarterly to monthly monetary data: {e}")
+        return None
+
+
 def load_gdp_data():
     """Load the Chow-Lin disaggregated GDP data."""
     logger.info("Loading Chow-Lin GDP data...")
@@ -60,9 +139,9 @@ def load_gdp_data():
         raise
 
 
-def merge_data(gdp_data, neer_data, reer_data):
-    """Merge GDP data with exchange rate data."""
-    logger.info("Merging GDP data with exchange rate data...")
+def merge_data(gdp_data, neer_data, reer_data, monetary_data=None):
+    """Merge GDP data with exchange rate data and monetary policy data."""
+    logger.info("Merging GDP data with exchange rate and monetary policy data...")
     
     # Merge NEER data with GDP data
     merged_data = gdp_data.merge(neer_data, on='Date', how='left')
@@ -71,6 +150,13 @@ def merge_data(gdp_data, neer_data, reer_data):
     # Merge REER data with the result
     merged_data = merged_data.merge(reer_data, on='Date', how='left')
     logger.info(f"After REER merge: {len(merged_data)} records")
+    
+    # Merge monetary policy data if available
+    if monetary_data is not None:
+        merged_data = merged_data.merge(monetary_data, on='Date', how='left')
+        logger.info(f"After monetary policy merge: {len(merged_data)} records")
+    else:
+        logger.warning("No monetary policy data to merge")
     
     return merged_data
 
@@ -114,17 +200,12 @@ def save_data(data, output_path):
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Save as Excel
+    # Save as Excel only
     excel_path = output_path.with_suffix('.xlsx')
     data.to_excel(excel_path, index=False)
     logger.info(f"Excel file saved: {excel_path}")
     
-    # Save as CSV
-    csv_path = output_path.with_suffix('.csv')
-    data.to_csv(csv_path, index=False)
-    logger.info(f"CSV file saved: {csv_path}")
-    
-    return excel_path, csv_path
+    return excel_path
 
 
 def display_summary(data):
@@ -160,25 +241,25 @@ def main():
         # Load data
         neer_data, reer_data = load_exchange_rate_data()
         gdp_data = load_gdp_data()
+        monetary_data = load_monetary_policy_data()
         
         # Merge data
-        merged_data = merge_data(gdp_data, neer_data, reer_data)
+        merged_data = merge_data(gdp_data, neer_data, reer_data, monetary_data)
         
         # Clean data
         final_data = clean_data(merged_data)
         
         # Save data
         project_root = Path(__file__).parent.parent.parent
-        output_path = project_root / 'data' / 'processed_data' / 'final_gdp_exchange_rate_data'
-        excel_path, csv_path = save_data(final_data, output_path)
+        output_path = project_root / 'data' / 'processed_data' / 'final_gdp_data_for_monthly.xlsx'
+        excel_path = save_data(final_data, output_path)
         
         # Display summary
         display_summary(final_data)
         
         logger.info("GDP and exchange rate data merger completed successfully!")
-        print(f"\nFinal files saved:")
+        print(f"\nFinal file saved:")
         print(f"  Excel: {excel_path}")
-        print(f"  CSV: {csv_path}")
         
     except Exception as e:
         logger.error(f"Error in main process: {str(e)}")

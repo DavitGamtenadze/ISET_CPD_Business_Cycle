@@ -204,6 +204,56 @@ class ChowLinGDPModel:
         logger.info(f"Models loaded from {filepath}")
 
 
+def process_real_gdp_growth_data(df):
+    """Process the real GDP growth rates file with Georgian month names."""
+    logger.info("Processing real GDP growth rates data...")
+    
+    # Create Georgian to English month mapping
+    georgian_months = {
+        'იანვარი': 1, 'თებერვალი': 2, 'მარტი': 3, 'აპრილი': 4, 'მაისი': 5, 'ივნისი': 6,
+        'ივლისი': 7, 'აგვისტო': 8, 'სექტემბერი': 9, 'ოქტომბერი': 10, 'ნოემბერი': 11, 'დეკემბერი': 12
+    }
+    
+    # The first row contains years, first column contains month names
+    years = []
+    for col in df.columns[1:]:  # Skip first column (month names)
+        year_val = df.iloc[0][col]
+        if pd.notna(year_val) and isinstance(year_val, (int, float)):
+            years.append(int(year_val))
+    
+    logger.info(f"Found years: {years}")
+    
+    # Process monthly data
+    monthly_data = []
+    
+    # Start from row 1 (skip the year row)
+    for row_idx in range(1, len(df)):
+        month_name_georgian = df.iloc[row_idx, 0]  # First column has Georgian month name
+        
+        if month_name_georgian in georgian_months:
+            month_num = georgian_months[month_name_georgian]
+            
+            # Get values for each year
+            for col_idx, year in enumerate(years, 1):  # Start from column 1
+                if col_idx < len(df.columns):
+                    value = df.iloc[row_idx, col_idx]
+                    if pd.notna(value):
+                        # Create date and add to data
+                        date = pd.Timestamp(year=year, month=month_num, day=1)
+                        monthly_data.append({
+                            'Date': date,
+                            'Real_GDP_Growth': float(value)
+                        })
+    
+    # Convert to DataFrame and sort by date
+    real_gdp_df = pd.DataFrame(monthly_data)
+    real_gdp_df = real_gdp_df.sort_values('Date').reset_index(drop=True)
+    
+    logger.info(f"Processed {len(real_gdp_df)} monthly observations from {real_gdp_df['Date'].min()} to {real_gdp_df['Date'].max()}")
+    
+    return real_gdp_df
+
+
 def load_data() -> tuple:
     logger.info("Loading data files...")
     
@@ -211,11 +261,13 @@ def load_data() -> tuple:
     project_root = Path(__file__).parent.parent.parent
     
     try:
-        yoy_path = project_root / 'data' / 'preliminary_data' / 'georgia_monthly_yoy_growth_rates_2011_2024.xlsx'
-        yoy_growth_rates = pd.read_excel(yoy_path)
-        logger.info("YoY growth rates loaded successfully")
+        # Load pre-calculated real GDP growth rates from 2012
+        real_gdp_path = project_root / 'data' / 'preliminary_data' / 'georgia_monthly_gdp_real_growth_rates_2012_2025.xlsx'
+        real_gdp_raw = pd.read_excel(real_gdp_path)
+        real_gdp_growth = process_real_gdp_growth_data(real_gdp_raw)
+        logger.info("Real GDP growth rates (2012+) loaded and processed successfully")
     except FileNotFoundError:
-        logger.error("YoY growth rates file not found")
+        logger.error("Real GDP growth rates file not found")
         raise
 
     try:
@@ -232,33 +284,41 @@ def load_data() -> tuple:
         quarterly_path = project_root / 'data' / 'processed_data' / 'georgia_quarterly_gdp_processed.xlsx'
         quarterly_gdp = pd.read_excel(quarterly_path)
         logger.info(f"Data columns: {quarterly_gdp.columns}")
+        
+        # Remove full year entries (2010, 2011, etc.) as requested
         quarterly_gdp = quarterly_gdp[quarterly_gdp['Date'].astype(str).str.len() > 4]
-        quarterly_gdp = quarterly_gdp.iloc[:-1]
+        
+        # Remove any rows that are just year numbers
+        quarterly_gdp = quarterly_gdp[~quarterly_gdp['Date'].astype(str).str.match(r'^\d{4}$')]
+        
+        logger.info(f"After filtering: {quarterly_gdp.shape}")
+        logger.info(f"Date samples: {quarterly_gdp['Date'].head().tolist()}")
+        
         logger.info("Quarterly GDP data loaded successfully")
     except FileNotFoundError:
         logger.error("Quarterly GDP data file not found")
         raise
 
-    return yoy_growth_rates, inflation_data, quarterly_gdp
+    return real_gdp_growth, inflation_data, quarterly_gdp
 
 
-def prepare_merged_data(yoy_growth_rates: pd.DataFrame, 
+def prepare_merged_data(real_gdp_growth: pd.DataFrame, 
                        inflation_data: pd.DataFrame) -> pd.DataFrame:
     logger.info("Preparing merged data...")
     
     inflation_data['Date'] = pd.to_datetime(inflation_data['Date'])
-    yoy_growth_rates['Date'] = pd.to_datetime(yoy_growth_rates['Date'])
+    real_gdp_growth['Date'] = pd.to_datetime(real_gdp_growth['Date'])
 
     inflation_subset = inflation_data[['Date', 'Total_CPI']].rename(columns={'Total_CPI': 'Inflation_Rate'})
-    merged_data = pd.merge(yoy_growth_rates, inflation_subset, on='Date', how='left')
-
-    merged_data['Real_GDP_Growth'] = (
-        (1 + merged_data['YoY Growth (%)']/100)
-        / (1 + merged_data['Inflation_Rate']/100)
-        - 1
-    ) * 100
-
-    logger.info("Merged data prepared successfully")
+    
+    # Use pre-calculated real GDP growth rates (already processed from Georgian format)
+    real_gdp_subset = real_gdp_growth[['Date', 'Real_GDP_Growth']]
+    
+    merged_data = pd.merge(real_gdp_subset, inflation_subset, on='Date', how='left')
+    
+    logger.info("Merged data prepared successfully with pre-calculated real GDP growth")
+    logger.info(f"Date range: {merged_data['Date'].min()} to {merged_data['Date'].max()}")
+    logger.info(f"Real GDP growth observations: {len(merged_data)}")
     return merged_data
 
 
@@ -266,11 +326,33 @@ def main():
     logger.info("Starting Chow-Lin GDP disaggregation process...")
     
     try:
-        yoy_growth_rates, inflation_data, quarterly_gdp = load_data()
-        merged_data = prepare_merged_data(yoy_growth_rates, inflation_data)
+        real_gdp_growth, inflation_data, quarterly_gdp = load_data()
+        merged_data = prepare_merged_data(real_gdp_growth, inflation_data)
         
-        quarterly_gdp = quarterly_gdp[["Date", "(=) GDP at market prices", 
-                                     "GDP per capita in GEL", "GDP per capita, USD", "GDP in mil. USD"]]
+        # Use actual column names from the real data
+        gdp_columns = [
+            "Date", 
+            "(=) Output at market prices", 
+            "Total output per capita in GEL", 
+            "Total output Per Capita, USD", 
+            "Total output, mil. USD"
+        ]
+        
+        # Check which columns exist
+        existing_columns = [col for col in gdp_columns if col in quarterly_gdp.columns]
+        logger.info(f"Using GDP columns: {existing_columns}")
+        
+        quarterly_gdp = quarterly_gdp[existing_columns]
+        
+        # Rename columns to match expected format for downstream processing
+        column_mapping = {
+            "(=) Output at market prices": "(=) GDP at market prices",
+            "Total output per capita in GEL": "GDP per capita in GEL", 
+            "Total output Per Capita, USD": "GDP per capita, USD",
+            "Total output, mil. USD": "GDP in mil. USD"
+        }
+        
+        quarterly_gdp = quarterly_gdp.rename(columns=column_mapping)
         
         merged_data = merged_data[:-3]
         quarterly_gdp = quarterly_gdp[4:]
@@ -287,7 +369,6 @@ def main():
         output_dir = project_root / 'data' / 'processed_data'
         output_dir.mkdir(parents=True, exist_ok=True)
         result_df.to_excel(output_dir / 'georgia_monthly_gdp_chow_lin.xlsx', index=False)
-        result_df.to_csv(output_dir / 'georgia_monthly_gdp_chow_lin.csv', index=False)
         
         logger.info("Chow-Lin GDP disaggregation completed successfully!")
         logger.info(f"Results saved to {output_dir}")

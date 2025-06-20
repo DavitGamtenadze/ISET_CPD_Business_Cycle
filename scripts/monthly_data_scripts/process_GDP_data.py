@@ -40,8 +40,6 @@ def process_gdp_data(input_path, output_path):
         
         if output_path.endswith('.xlsx'):
             gdp_pivoted.to_excel(output_path, index=False)
-        else:
-            gdp_pivoted.to_csv(output_path, index=False)
             
         logger.info(f"Saved clean data to {output_path}")
         logger.debug(f"\nFirst few rows:\n{gdp_pivoted.head()}")
@@ -52,24 +50,28 @@ def process_gdp_data(input_path, output_path):
         logger.error(f"Processing failed: {e}", exc_info=True)
 
 if __name__ == '__main__':
-    # Set up logging
-    os.makedirs('logs', exist_ok=True)
+    from pathlib import Path
+    
+    # Setup logging to project logs directory
+    project_root = Path(__file__).parent.parent.parent
+    log_dir = project_root / 'logs'
+    log_dir.mkdir(exist_ok=True)
+    
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler("logs/gdp_processing.log"),
+            logging.FileHandler(log_dir / "gdp_processing.log"),
             logging.StreamHandler()
         ]
     )
     
     logger.info("Starting GDP processing")
     
-    # File paths
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    input_file = os.path.join(root, 'data', 'preliminary_data', 'georgia_quarterly_gdp.xlsx')
-    output_file = os.path.join(root, 'data', 'processed_data', 'georgia_quarterly_gdp_processed.xlsx')
+    # Use absolute paths from project root
+    input_file = project_root / 'data' / 'preliminary_data' / 'georgia_quarterly_gdp.xlsx'
+    output_file = project_root / 'data' / 'processed_data' / 'georgia_quarterly_gdp_processed.xlsx'
     
-    process_gdp_data(input_file, output_file)
+    process_gdp_data(str(input_file), str(output_file))
     
     logger.info("Done!")

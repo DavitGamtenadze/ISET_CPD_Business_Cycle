@@ -94,7 +94,23 @@ else
     exit 1
 fi
 
-print_step "Running Chow-Lin GDP disaggregation..."
+print_step "Processing monetary policy rates (quarterly)..."
+if python scripts/monthly_data_scripts/process_monetary_rate.py; then
+    print_success "Quarterly monetary policy rate processing completed"
+else
+    print_error "Quarterly monetary policy rate processing failed"
+    exit 1
+fi
+
+print_step "Creating monthly monetary policy rates..."
+if python scripts/monthly_data_scripts/create_monthly_monetary_policy_rates.py; then
+    print_success "Monthly monetary policy rate creation completed"
+else
+    print_error "Monthly monetary policy rate creation failed"
+    exit 1
+fi
+
+print_step "Running Chow-Lin GDP disaggregation (with pre-calculated real growth rates)..."
 if python scripts/monthly_data_scripts/chow_lin_gdp_disaggregation.py; then
     print_success "Chow-Lin disaggregation completed"
 else
@@ -113,7 +129,6 @@ fi
 print_step "Moving final data to monthly_data folder..."
 if [ -f "data/processed_data/final_gdp_exchange_rate_data.xlsx" ]; then
     mv data/processed_data/final_gdp_exchange_rate_data.xlsx data/monthly_data/
-    mv data/processed_data/final_gdp_exchange_rate_data.csv data/monthly_data/
     print_success "Final data moved to monthly_data folder"
 else
     print_error "Final data file not found"
@@ -122,14 +137,30 @@ fi
 
 echo ""
 echo "=============================================="
-echo "PHASE 4: QUARTERLY ANALYSIS"
+echo "PHASE 4: QUARTERLY DATA PROCESSING"
 echo "=============================================="
 
-print_step "Running quarterly analysis..."
-if python scripts/quarterly_data_scripts/quarterly_analysis.py; then
-    print_success "Quarterly analysis completed"
+print_step "Converting exchange rates to quarterly format..."
+if python scripts/quarterly_data_scripts/process_exchange_rates_quarterly.py; then
+    print_success "Quarterly exchange rates processing completed"
 else
-    print_error "Quarterly analysis failed"
+    print_error "Quarterly exchange rates processing failed"
+    exit 1
+fi
+
+print_step "Converting inflation to quarterly format..."
+if python scripts/quarterly_data_scripts/process_inflation_quarterly.py; then
+    print_success "Quarterly inflation processing completed"
+else
+    print_error "Quarterly inflation processing failed"
+    exit 1
+fi
+
+print_step "Creating comprehensive quarterly dataset with all columns..."
+if python scripts/quarterly_data_scripts/final_quarterly_data.py; then
+    print_success "Quarterly data creation completed"
+else
+    print_error "Quarterly data creation failed"
     exit 1
 fi
 

@@ -147,20 +147,26 @@ def process_inflation_data(input_path, output_path):
         
 
 if __name__ == '__main__':
-    # Start the logger to show everybug
-    os.makedirs('logs', exist_ok=True)
+    from pathlib import Path
+    
+    # Setup logging to project logs directory
+    project_root = Path(__file__).parent.parent.parent
+    log_dir = project_root / 'logs'
+    log_dir.mkdir(exist_ok=True)
+    
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler("logs/inflation_processing.log"),
+            logging.FileHandler(log_dir / "inflation_processing.log"),
             logging.StreamHandler()
         ]
     )
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    input_file = os.path.join(project_root, 'data', 'preliminary_data', 'georgia_monthly_inflation_2000_2003.xlsx')
-    output_file = os.path.join(project_root, 'data', 'processed_data', 'georgia_monthly_inflation_2000_2003_processed.xlsx')
+    
+    # Use absolute paths from project root
+    input_file = project_root / 'data' / 'preliminary_data' / 'georgia_monthly_inflation_2000_2003.xlsx'
+    output_file = project_root / 'data' / 'processed_data' / 'georgia_monthly_inflation_2000_2003_processed.xlsx'
     
     logger.info("Starting inflation data processing script")
-    process_inflation_data(input_file, output_file)
+    process_inflation_data(str(input_file), str(output_file))
     logger.info("Completed inflation data processing script")
