@@ -53,8 +53,8 @@ print_step "Downloading monthly GDP real growth rates (2012-2025)..."
 curl -L -o georgia_monthly_gdp_real_growth_rates_2012_2025.xlsx "https://cpd-iset-ba-thesis.s3.eu-north-1.amazonaws.com/GDP_real_growth.xlsx"
 print_success "GDP real growth rates downloaded"
 
-print_step "Downloading monthly weighted deposit interest rates..."
-curl -L -o georgia_monthly_weighted_deposit_interest_rates.xlsx "https://cpd-iset-ba-thesis.s3.eu-north-1.amazonaws.com/annual-weighted-deposit-interest-rates-dwirgeo.xlsx"
+print_step "Downloading quarterly weighted deposit interest rates..."
+curl -L -o georgia_quarterly_weighted_deposit_interest_rates.xlsx "https://cpd-iset-ba-thesis.s3.eu-north-1.amazonaws.com/annual-weighted-deposit-interest-rates-dwirgeo.xlsx"
 print_success "Weighted deposit interest rates downloaded"
 
 print_step "Downloading Business Confidence Index..."

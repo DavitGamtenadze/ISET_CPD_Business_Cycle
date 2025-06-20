@@ -160,6 +160,70 @@ def load_final_monthly_data():
     return datasets
 
 
+def load_weighted_deposit_rates_data():
+    """Load Georgia weighted deposit interest rates data."""
+    logger.info("Loading weighted deposit interest rates data")
+
+    try:
+        project_root = Path(__file__).parent.parent.parent
+        deposit_rates_path = project_root / 'data' / 'preliminary_data' / 'georgia_quarterly_weighted_deposit_interest_rates.xlsx'
+
+        if not deposit_rates_path.exists():
+            logger.warning("Weighted deposit interest rates data not found")
+            return None
+
+        # Read data, skip first row, no header
+        deposit_data = pd.read_excel(deposit_rates_path, header=None, skiprows=1)
+        
+        # Column 0 is dates, Column 4 is "სულ - ეროვნული ვალუტით"
+        deposit_clean = deposit_data[[0, 4]].copy()
+        deposit_clean.columns = ['Date', 'Weighted_Deposit_Rate_GEL']
+        
+        # Remove rows with NaN dates
+        deposit_clean = deposit_clean[deposit_clean['Date'].notna()]
+        
+        # Convert date format from "1996-Q-1" to "I 96"
+        def convert_deposit_date_format(date_str):
+            if pd.isna(date_str) or not isinstance(date_str, str):
+                return None
+            
+            try:
+                # Handle format like "1996-Q-1"
+                if '-Q-' in date_str:
+                    year, quarter_part = date_str.split('-Q-')
+                    quarter_map = {'1': 'I', '2': 'II', '3': 'III', '4': 'IV'}
+                    quarter_roman = quarter_map.get(quarter_part)
+                    if quarter_roman:
+                        year_short = year[2:]  # Get last 2 digits
+                        return f"{quarter_roman} {year_short}"
+                return None
+            except (ValueError, IndexError):
+                return None
+        
+        deposit_clean['Date'] = deposit_clean['Date'].apply(convert_deposit_date_format)
+        
+        # Remove rows with invalid dates
+        deposit_clean = deposit_clean[deposit_clean['Date'].notna()]
+        
+        # Convert deposit rates to numeric, handle non-numeric values
+        deposit_clean['Weighted_Deposit_Rate_GEL'] = pd.to_numeric(deposit_clean['Weighted_Deposit_Rate_GEL'], errors='coerce')
+        
+        # Remove rows with invalid deposit rates
+        deposit_clean = deposit_clean[deposit_clean['Weighted_Deposit_Rate_GEL'].notna()]
+        
+        # Divide by 100 to convert to decimal format (like other rates)
+        deposit_clean['Weighted_Deposit_Rate_GEL'] = deposit_clean['Weighted_Deposit_Rate_GEL'] / 100.0
+        
+        logger.info(f"Weighted deposit rates data: {len(deposit_clean)} records")
+        logger.info("Converted weighted deposit rates to decimal format")
+        
+        return deposit_clean
+
+    except Exception as e:
+        logger.error(f"Error loading weighted deposit rates data: {e}")
+        return None
+
+
 def load_business_confidence_data():
     """Load Georgia Business Confidence Index data."""
     logger.info("Loading Georgia Business Confidence Index data...")
@@ -173,16 +237,44 @@ def load_business_confidence_data():
 
         business_data = pd.read_excel(business_confidence_path)
 
-        # Convert date format to match quarterly format (e.g., "2019-Q4" -> "IV 19")
+        # Convert date format to match quarterly format (e.g., "Q4/13" -> "IV 13")
         def convert_date_format(date_str):
-            year, quarter = date_str.split('-')
-            quarter_num = quarter[1]  # Extract number from Q1, Q2, etc.
-            quarter_map = {'1': 'I', '2': 'II', '3': 'III', '4': 'IV'}
-            quarter_roman = quarter_map[quarter_num]
-            year_short = year[2:]  # Get last 2 digits
-            return f"{quarter_roman} {year_short}"
+            # Skip NaN or invalid values
+            if pd.isna(date_str) or not isinstance(date_str, str):
+                return None
+                
+            try:
+                if '/' in date_str:
+                    # Handle format like "Q4/13"
+                    parts = date_str.split('/')
+                    if len(parts) != 2:
+                        return None
+                    quarter, year = parts
+                    quarter_num = quarter[1]  # Extract number from Q1, Q2, etc.
+                    year_short = year  # Already short format
+                elif '-' in date_str:
+                    # Handle format like "2019-Q4"
+                    parts = date_str.split('-')
+                    if len(parts) != 2:
+                        return None
+                    year, quarter = parts
+                    quarter_num = quarter[1]  # Extract number from Q1, Q2, etc.
+                    year_short = year[2:]  # Get last 2 digits
+                else:
+                    return None
+                
+                quarter_map = {'1': 'I', '2': 'II', '3': 'III', '4': 'IV'}
+                if quarter_num not in quarter_map:
+                    return None
+                quarter_roman = quarter_map[quarter_num]
+                return f"{quarter_roman} {year_short}"
+            except (IndexError, ValueError):
+                return None
 
         business_data['Date'] = business_data['Date'].apply(convert_date_format)
+        
+        # Remove rows with invalid dates
+        business_data = business_data[business_data['Date'].notna()]
 
         logger.info(f"Business confidence data: {len(business_data)} records")
         logger.info(f"Business confidence columns: {list(business_data.columns)}")
@@ -237,10 +329,20 @@ def create_final_quarterly_data(datasets):
     business_confidence_data = load_business_confidence_data()
     if business_confidence_data is not None:
         quarterly_data = pd.merge(quarterly_data, business_confidence_data, on='Date', how='left')
+        
         logger.info(f"After business confidence merge: {quarterly_data.shape}")
         logger.info("Business confidence data merged successfully")
     else:
         logger.warning("No business confidence data to merge")
+
+    # Load and merge weighted deposit interest rates data
+    deposit_rates_data = load_weighted_deposit_rates_data()
+    if deposit_rates_data is not None:
+        quarterly_data = pd.merge(quarterly_data, deposit_rates_data, on='Date', how='left')
+        logger.info(f"After deposit rates merge: {quarterly_data.shape}")
+        logger.info("Weighted deposit rates data merged successfully")
+    else:
+        logger.warning("No weighted deposit rates data to merge")
 
     # Select and rename columns to match requirements
     desired_columns = [
@@ -255,6 +357,7 @@ def create_final_quarterly_data(datasets):
         'Monetary_Policy_Rate_Decimal',
         'Business Confidence Index (BCI)',
         'Sales Price Expectations Index',
+        'Weighted_Deposit_Rate_GEL',
     ]
 
     # Add exchange rate columns that exist
