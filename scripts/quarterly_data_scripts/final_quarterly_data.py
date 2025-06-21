@@ -30,7 +30,8 @@ def convert_monthly_to_quarterly_format(df, date_col='Date'):
     """Convert monthly data to quarterly format with I 10, II 10, etc.
     
     GDP columns are SUMMED (total quarterly output)
-    Rates/inflation columns are AVERAGED (quarterly average rates)
+    Inflation/rates are AVERAGED (quarterly average rates)
+    Exchange rates use LAST value (end-of-quarter)
     """
     df = df.copy()
     df[date_col] = pd.to_datetime(df[date_col])
@@ -48,23 +49,30 @@ def convert_monthly_to_quarterly_format(df, date_col='Date'):
     # Select numeric columns for aggregation
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
-    # Define which columns should be summed vs averaged
+    # Define aggregation rules
     # GDP level columns (absolute values that should be summed)
     gdp_columns = [col for col in numeric_cols if any(keyword in col.lower() for keyword in 
-                   ['gdp_at_market_prices', 'gdp per capita', 'gdp in mil'])]
+                   ['gdp_at_market_prices', 'gdp per capita', 'gdp in mil', '_monthly'])]
     
-    # Rate/growth/index columns (percentages/ratios that should be averaged)
+    # Exchange rate columns (use last value of quarter)
+    exchange_rate_columns = [col for col in numeric_cols if any(keyword in col for keyword in 
+                            ['NEER', 'Real Effective Exchange Rate', 'GEL/USD', 'GEL/EUR', 'GEL/TRY', 'GEL/RUB']) 
+                            and 'Dec-' in col]
+    
+    # Rate/inflation columns (percentages that should be averaged)
     rate_columns = [col for col in numeric_cols if any(keyword in col.lower() for keyword in 
-                    ['rate', 'inflation', 'growth', 'confidence', 'index', 'neer', 'reer', 'exchange']) 
-                    and col not in gdp_columns]
+                    ['rate', 'inflation', 'growth', 'confidence']) 
+                    and col not in gdp_columns and col not in exchange_rate_columns]
     
     # Remaining numeric columns (default to mean)
-    other_columns = [col for col in numeric_cols if col not in gdp_columns and col not in rate_columns]
+    other_columns = [col for col in numeric_cols if col not in gdp_columns 
+                     and col not in rate_columns and col not in exchange_rate_columns]
 
     quarterly_data = df.groupby('Quarter_Label').agg({
-        **{col: 'sum' for col in gdp_columns},      # GDP columns: SUM
-        **{col: 'mean' for col in rate_columns},    # Rates: MEAN
-        **{col: 'mean' for col in other_columns}    # Others: MEAN
+        **{col: 'sum' for col in gdp_columns},           # GDP columns: SUM
+        **{col: 'mean' for col in rate_columns},         # Rates: MEAN  
+        **{col: 'last' for col in exchange_rate_columns}, # Exchange rates: LAST
+        **{col: 'mean' for col in other_columns}         # Others: MEAN
     }).reset_index()
     
     quarterly_data = quarterly_data.rename(columns={'Quarter_Label': 'Date'})
@@ -76,6 +84,7 @@ def convert_monthly_to_quarterly_format(df, date_col='Date'):
 
     logger.info(f"GDP columns (summed): {gdp_columns}")
     logger.info(f"Rate columns (averaged): {rate_columns}")
+    logger.info(f"Exchange rate columns (last value): {exchange_rate_columns}")
 
     return quarterly_data
 
@@ -206,7 +215,9 @@ def load_actual_quarterly_gdp_data():
         
         for i, val in enumerate(header_row):
             if isinstance(val, str) and any(q in val for q in ['I ', 'II ', 'III ', 'IV ']):
-                quarterly_dates.append(val.strip())
+                # Remove asterisks from dates like "I 24*" -> "I 24"
+                clean_date = val.strip().rstrip('*')
+                quarterly_dates.append(clean_date)
                 date_columns.append(i)
         
         # Find all GDP-related rows
@@ -297,15 +308,23 @@ def load_weighted_deposit_rates_data():
         # Remove rows with NaN dates
         deposit_clean = deposit_clean[deposit_clean['Date'].notna()]
         
-        # Convert date format from "1996-Q-1" to "I 96"
+        # Convert date format from "1996-Q-1" or "2016-Q1" to "I 96" or "I 16"
         def convert_deposit_date_format(date_str):
             if pd.isna(date_str) or not isinstance(date_str, str):
                 return None
             
             try:
-                # Handle format like "1996-Q-1"
+                # Handle format like "1996-Q-1" (with dashes)
                 if '-Q-' in date_str:
                     year, quarter_part = date_str.split('-Q-')
+                    quarter_map = {'1': 'I', '2': 'II', '3': 'III', '4': 'IV'}
+                    quarter_roman = quarter_map.get(quarter_part)
+                    if quarter_roman:
+                        year_short = year[2:]  # Get last 2 digits
+                        return f"{quarter_roman} {year_short}"
+                # Handle format like "2016-Q1" (without dashes)
+                elif '-Q' in date_str:
+                    year, quarter_part = date_str.split('-Q')
                     quarter_map = {'1': 'I', '2': 'II', '3': 'III', '4': 'IV'}
                     quarter_roman = quarter_map.get(quarter_part)
                     if quarter_roman:
@@ -405,61 +424,109 @@ def create_final_quarterly_data(datasets):
     """Create final quarterly dataset with all requested columns."""
     logger.info("Creating final quarterly dataset...")
 
-    # Load actual quarterly GDP data instead of using monthly aggregation
-    quarterly_gdp_data = load_actual_quarterly_gdp_data()
-    if quarterly_gdp_data is None:
-        logger.error("Could not load actual quarterly GDP data")
-        return None
-
-    # Start with actual quarterly GDP data as base
-    quarterly_data = quarterly_gdp_data.copy()
-    logger.info(f"Using actual quarterly GDP as base: {quarterly_data.shape}")
-
-    # Get monthly data for rates/indices aggregation (but not GDP)
     base_data = None
+
+    # Start with the most complete monthly dataset
     if 'final_monthly' in datasets:
         base_data = datasets['final_monthly'].copy()
-        logger.info(f"Monthly data available for rates: {base_data.shape}")
+        logger.info(f"Using final_monthly as base: {base_data.shape}")
     elif 'chow_lin' in datasets:
         base_data = datasets['chow_lin'].copy()
-        logger.info(f"Chow-Lin data available for rates: {base_data.shape}")
-
-    if base_data is not None:
-        # Merge monetary policy rates if available
-        if 'monetary_monthly' in datasets:
-            monetary_data = datasets['monetary_monthly']
-            base_data = pd.merge(base_data, monetary_data, on='Date', how='left')
-            logger.info(f"After monetary merge: {base_data.shape}")
-
-        # Merge exchange rate data if needed
-        if 'reer' in datasets and 'REER' not in str(base_data.columns):
-            reer_data = datasets['reer'].copy()
-            reer_data['Date'] = pd.to_datetime(reer_data['Date'])
-            base_data = pd.merge(base_data, reer_data, on='Date', how='left')
-            logger.info(f"After REER merge: {base_data.shape}")
-
-        if 'neer' in datasets and 'NEER' not in str(base_data.columns):
-            neer_data = datasets['neer'].copy()
-            neer_data['Date'] = pd.to_datetime(neer_data['Date'])
-            base_data = pd.merge(base_data, neer_data, on='Date', how='left')
-            logger.info(f"After NEER merge: {base_data.shape}")
-
-        # Convert monthly rates/indices to quarterly format (exclude GDP columns)
-        rates_columns = [col for col in base_data.columns if col not in ['GDP_at_market_prices_monthly', 'GDP per capita in GEL_monthly', 'GDP per capita, USD_monthly', 'GDP in mil. USD_monthly']]
-        rates_data = base_data[rates_columns]
-        quarterly_rates = convert_monthly_to_quarterly_format(rates_data)
-        
-        # Merge quarterly rates with quarterly GDP
-        quarterly_data = pd.merge(quarterly_data, quarterly_rates, on='Date', how='left')
-        logger.info(f"After merging quarterly rates: {quarterly_data.shape}")
+        logger.info(f"Using chow_lin as base: {base_data.shape}")
     else:
-        logger.warning("No monthly data available for rates aggregation")
+        logger.error("No suitable base dataset found")
+        return None
+
+    # Ensure Date column is datetime
+    base_data['Date'] = pd.to_datetime(base_data['Date'])
+
+    # Merge monetary policy rates if available
+    if 'monetary_monthly' in datasets:
+        monetary_data = datasets['monetary_monthly'].copy()
+        monetary_data['Date'] = pd.to_datetime(monetary_data['Date'])
+        base_data = pd.merge(base_data, monetary_data, on='Date', how='left')
+        logger.info(f"After monetary merge: {base_data.shape}")
+
+    # Merge exchange rate data if needed
+    if 'reer' in datasets and 'REER' not in str(base_data.columns):
+        reer_data = datasets['reer'].copy()
+        reer_data['Date'] = pd.to_datetime(reer_data['Date'])
+        base_data = pd.merge(base_data, reer_data, on='Date', how='left')
+        logger.info(f"After REER merge: {base_data.shape}")
+
+    if 'neer' in datasets and 'NEER' not in str(base_data.columns):
+        neer_data = datasets['neer'].copy()
+        neer_data['Date'] = pd.to_datetime(neer_data['Date'])
+        base_data = pd.merge(base_data, neer_data, on='Date', how='left')
+        logger.info(f"After NEER merge: {base_data.shape}")
+
+    # Convert to quarterly format with proper aggregation
+    quarterly_data = convert_monthly_to_quarterly_format(base_data)
+    logger.info(f"After quarterly conversion: {quarterly_data.shape}")
+    
+    # Calculate Real GDP Growth from quarterly GDP data (year-over-year)
+    def calculate_real_gdp_growth(df):
+        """Calculate year-over-year Real GDP Growth from quarterly GDP data."""
+        df = df.copy()
+        
+        # Find GDP column
+        gdp_col = None
+        for col in df.columns:
+            if 'gdp_at_market_prices' in col.lower() or 'gdp_monthly' in col.lower():
+                gdp_col = col
+                break
+        
+        if gdp_col is None:
+            logger.warning("No GDP column found for growth calculation")
+            return df
+        
+        # Parse dates to extract year and quarter
+        df['year'] = df['Date'].apply(lambda x: int(x.split()[1]) + 2000)
+        df['quarter'] = df['Date'].apply(lambda x: {'I': 1, 'II': 2, 'III': 3, 'IV': 4}[x.split()[0]])
+        
+        # Sort by year and quarter
+        df = df.sort_values(['year', 'quarter']).reset_index(drop=True)
+        
+        # Calculate year-over-year growth
+        gdp_growth = []
+        for i, row in df.iterrows():
+            current_year = row['year']
+            current_quarter = row['quarter']
+            current_gdp = row[gdp_col]
+            
+            # Find same quarter in previous year
+            prev_year_data = df[(df['year'] == current_year - 1) & (df['quarter'] == current_quarter)]
+            
+            if not prev_year_data.empty and pd.notna(current_gdp):
+                prev_gdp = prev_year_data[gdp_col].iloc[0]
+                if pd.notna(prev_gdp) and prev_gdp != 0:
+                    growth_rate = (current_gdp - prev_gdp) / prev_gdp
+                    gdp_growth.append(growth_rate)
+                else:
+                    gdp_growth.append(np.nan)
+            else:
+                gdp_growth.append(np.nan)
+        
+        df['Real_GDP_Growth_Calculated'] = gdp_growth
+        df = df.drop(['year', 'quarter'], axis=1)
+        
+        # Replace existing Real_GDP_Growth with calculated one
+        if 'Real_GDP_Growth' in df.columns:
+            df['Real_GDP_Growth'] = df['Real_GDP_Growth_Calculated']
+        else:
+            df['Real_GDP_Growth'] = df['Real_GDP_Growth_Calculated']
+        
+        df = df.drop(['Real_GDP_Growth_Calculated'], axis=1)
+        
+        logger.info("Calculated Real GDP Growth from quarterly GDP data")
+        return df
+    
+    quarterly_data = calculate_real_gdp_growth(quarterly_data)
 
     # Load and merge business confidence data
     business_confidence_data = load_business_confidence_data()
     if business_confidence_data is not None:
         quarterly_data = pd.merge(quarterly_data, business_confidence_data, on='Date', how='left')
-        
         logger.info(f"After business confidence merge: {quarterly_data.shape}")
         logger.info("Business confidence data merged successfully")
     else:
@@ -474,13 +541,36 @@ def create_final_quarterly_data(datasets):
     else:
         logger.warning("No weighted deposit rates data to merge")
 
+    # Clean up duplicate exchange rate columns first
+    columns_to_drop = []
+    columns_to_rename = {}
+    
+    for col in quarterly_data.columns:
+        if col.endswith('_x') or col.endswith('_y'):
+            base_col = col.replace('_x', '').replace('_y', '')
+            if base_col not in [c.replace('_x', '').replace('_y', '') for c in quarterly_data.columns if not c.endswith(('_x', '_y'))]:
+                # If no base version exists, keep the _x version and rename it
+                if col.endswith('_x'):
+                    columns_to_rename[col] = base_col
+                elif col.endswith('_y'):
+                    columns_to_drop.append(col)
+            else:
+                # If base version exists, drop both _x and _y
+                columns_to_drop.append(col)
+    
+    # Apply renaming and dropping
+    quarterly_data = quarterly_data.rename(columns=columns_to_rename)
+    if columns_to_drop:
+        quarterly_data = quarterly_data.drop(columns=columns_to_drop)
+        logger.info(f"Cleaned duplicate exchange rate columns: {len(columns_to_drop)} dropped, {len(columns_to_rename)} renamed")
+
     # Select and rename columns to match requirements
     desired_columns = [
         'Date',
-        'GDP_at_market_prices_quarterly',  # Actual quarterly GDP data
-        'GDP_per_capita_GEL_quarterly',    # GDP per capita in GEL
-        'GDP_per_capita_USD_quarterly',    # GDP per capita in USD
-        'GDP_mil_USD_quarterly',           # GDP in millions USD
+        'GDP_at_market_prices_monthly',    # Summed quarterly GDP from monthly
+        'GDP per capita in GEL_monthly',   # GDP per capita in GEL
+        'GDP per capita, USD_monthly',     # GDP per capita in USD
+        'GDP in mil. USD_monthly',         # GDP in millions USD
         'Real_GDP_Growth',
         'Inflation_Rate',
         'Monetary_Policy_Rate_Decimal',    # Only decimal version, remove percent
@@ -489,7 +579,7 @@ def create_final_quarterly_data(datasets):
         'Weighted_Deposit_Rate_GEL',
     ]
 
-    # Add exchange rate columns that exist
+    # Add all exchange rate columns that exist (including REER indices)
     exchange_rate_patterns = [
         'NEER (Dec-2011=100)',
         'Real Effective Exchange Rate - Index (Dec-11=100)',
@@ -499,22 +589,51 @@ def create_final_quarterly_data(datasets):
         'GEL/RUB Real Exchange Rate - Index (Dec-11=100)'
     ]
 
-    # Find existing columns that match patterns
+    # Find all columns that should be included
     available_columns = []
-    for col in quarterly_data.columns:
-        if col in desired_columns:
+    
+    # Add desired columns that exist
+    for col in desired_columns:
+        if col in quarterly_data.columns:
             available_columns.append(col)
-        else:
-            for pattern in exchange_rate_patterns:
-                if pattern in col or any(keyword in col for keyword in ['NEER', 'REER', 'Real Effective', 'GEL/USD', 'GEL/EUR', 'GEL/TRY', 'GEL/RUB']):
-                    available_columns.append(col)
-                    break
+    
+    # Add exchange rate columns that exist
+    for col in quarterly_data.columns:
+        if col not in available_columns and any(keyword in col for keyword in ['NEER', 'REER', 'Real Effective', 'GEL/USD', 'GEL/EUR', 'GEL/TRY', 'GEL/RUB']):
+            available_columns.append(col)
+    
+    # Ensure Weighted_Deposit_Rate_GEL is included if it exists
+    if 'Weighted_Deposit_Rate_GEL' in quarterly_data.columns and 'Weighted_Deposit_Rate_GEL' not in available_columns:
+        available_columns.append('Weighted_Deposit_Rate_GEL')
+        logger.info("Added Weighted_Deposit_Rate_GEL to final columns")
 
-    # Select available columns
+    # Select available columns and ensure Date is first
     final_columns = ['Date'] + [col for col in available_columns if col != 'Date']
     quarterly_final = quarterly_data[final_columns] if final_columns else quarterly_data
+    
+    logger.info(f"Available columns before final selection: {available_columns}")
+    logger.info(f"Final columns selected: {final_columns}")
+
+    # Sort quarterly data chronologically
+    def sort_quarterly_dates(date_str):
+        """Convert quarterly date to sortable format"""
+        try:
+            parts = date_str.strip().split()
+            if len(parts) == 2:
+                quarter_roman, year_short = parts
+                quarter_map = {'I': 1, 'II': 2, 'III': 3, 'IV': 4}
+                quarter_num = quarter_map.get(quarter_roman, 0)
+                year_full = 2000 + int(year_short)
+                return year_full * 10 + quarter_num
+        except:
+            pass
+        return 0
+    
+    quarterly_final['sort_key'] = quarterly_final['Date'].apply(sort_quarterly_dates)
+    quarterly_final = quarterly_final.sort_values('sort_key').drop('sort_key', axis=1).reset_index(drop=True)
 
     logger.info(f"Final quarterly data: {quarterly_final.shape}")
+    logger.info(f"Date range after sorting: {quarterly_final['Date'].iloc[0]} to {quarterly_final['Date'].iloc[-1]}")
     logger.info(f"Columns: {list(quarterly_final.columns)}")
 
     return quarterly_final
