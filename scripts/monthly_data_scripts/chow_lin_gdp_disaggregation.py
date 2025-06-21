@@ -43,33 +43,59 @@ class ChowLinGDPModel:
         logger.info("Merging quarterly and monthly GDP data...")
         
         quarterly_data = quarterly_gdp.copy()
-        parts = quarterly_data['Date'].str.extract(r'^(I{1,3}|IV)\s+(\d{2})\*?$')
+        
+        # Fix the regex pattern to properly capture all Roman numerals
+        parts = quarterly_data['Date'].str.extract(r'^(I{1,3}V?|IV|V)\s+(\d{2})\*?$')
         quarterly_data['Q_Roman'], quarterly_data['YY2'] = parts[0], parts[1]
 
+        # Filter out non-quarterly rows (like year totals)
         quarterly_data = quarterly_data[quarterly_data['Q_Roman'].isin(['I','II','III','IV'])].copy()
-
+        
+        # Convert Roman numerals to quarter numbers
         roman_map = {'I': 1, 'II': 2, 'III': 3, 'IV': 4}
-        quarterly_data['qnum'] = quarterly_data['Q_Roman'].map(roman_map).astype(int)
+        quarterly_data['qnum'] = quarterly_data['Q_Roman'].map(roman_map)
+        
+        # Handle missing values in year extraction
+        quarterly_data = quarterly_data.dropna(subset=['YY2'])
         quarterly_data['year4'] = quarterly_data['YY2'].astype(int) + 2000
         quarterly_data['q_str'] = quarterly_data['year4'].astype(str) + 'Q' + quarterly_data['qnum'].astype(str)
 
+        logger.info(f"Processed quarterly dates: {quarterly_data[['Date', 'q_str']].head().to_dict('records')}")
+
         gdp_cols = [
-            '(=) GDP at market prices',
-            'GDP per capita in GEL', 
-            'GDP per capita, USD',
-            'GDP in mil. USD'
+            '(=) Output at market prices',  # Correct column name from processed data
+            'Total output per capita in GEL', 
+            'Total output Per Capita, USD',
+            'Total output, mil. USD'
         ]
-        q_merge = quarterly_data[['q_str'] + gdp_cols]
+        
+        # Check which columns exist
+        existing_gdp_cols = [col for col in gdp_cols if col in quarterly_data.columns]
+        logger.info(f"Available GDP columns: {existing_gdp_cols}")
+        
+        q_merge = quarterly_data[['q_str'] + existing_gdp_cols]
 
         monthly_data = inflation_data.copy()
-        monthly_data['Date'] = pd.to_datetime(monthly_data['Date'], dayfirst=True)
+        monthly_data['Date'] = pd.to_datetime(monthly_data['Date'])
         monthly_data['q_str'] = monthly_data['Date'].dt.to_period('Q').astype(str)
+
+        logger.info(f"Monthly q_str sample: {monthly_data['q_str'].head().tolist()}")
+        logger.info(f"Quarterly q_str sample: {q_merge['q_str'].head().tolist()}")
 
         merged = pd.merge(monthly_data, q_merge, on='q_str', how='left')
         merged = merged.rename(columns={
-            '(=) GDP at market prices': 'GDP_at_market_prices'
+            '(=) Output at market prices': 'GDP_at_market_prices',
+            'Total output per capita in GEL': 'GDP per capita in GEL',
+            'Total output Per Capita, USD': 'GDP per capita, USD',
+            'Total output, mil. USD': 'GDP in mil. USD'
         })
 
+        # Check merge success
+        gdp_col_check = 'GDP_at_market_prices' if 'GDP_at_market_prices' in merged.columns else existing_gdp_cols[0] if existing_gdp_cols else None
+        if gdp_col_check:
+            non_null_count = merged[gdp_col_check].notna().sum()
+            logger.info(f"Merge success: {non_null_count}/{len(merged)} monthly observations have quarterly GDP data")
+        
         logger.info(f"Successfully merged data with {len(merged)} monthly observations")
         return merged
 
@@ -284,10 +310,7 @@ def load_data() -> tuple:
         quarterly_path = project_root / 'data' / 'processed_data' / 'georgia_quarterly_gdp_processed.xlsx'
         quarterly_gdp = pd.read_excel(quarterly_path)
         
-        # Remove full year entries (2010, 2011, etc.) as requested
-        quarterly_gdp = quarterly_gdp[quarterly_gdp['Date'].astype(str).str.len() > 4]
-        
-        # Remove any rows that are just year numbers
+        # Remove only year total rows (2010, 2011, etc.) but keep quarterly data (I 12, II 12, etc.)
         quarterly_gdp = quarterly_gdp[~quarterly_gdp['Date'].astype(str).str.match(r'^\d{4}$')]
         
         logger.info(f"Quarterly GDP data loaded: {quarterly_gdp.shape}")
@@ -324,7 +347,7 @@ def main():
         real_gdp_growth, inflation_data, quarterly_gdp = load_data()
         merged_data = prepare_merged_data(real_gdp_growth, inflation_data)
         
-        # Use actual column names from the real data
+        # Keep original column names - the merge function will handle renaming
         gdp_columns = [
             "Date", 
             "(=) Output at market prices", 
@@ -338,16 +361,6 @@ def main():
         logger.info(f"Using {len(existing_columns)} GDP columns")
         
         quarterly_gdp = quarterly_gdp[existing_columns]
-        
-        # Rename columns to match expected format for downstream processing
-        column_mapping = {
-            "(=) Output at market prices": "(=) GDP at market prices",
-            "Total output per capita in GEL": "GDP per capita in GEL", 
-            "Total output Per Capita, USD": "GDP per capita, USD",
-            "Total output, mil. USD": "GDP in mil. USD"
-        }
-        
-        quarterly_gdp = quarterly_gdp.rename(columns=column_mapping)
         
         merged_data = merged_data[:-3]
         quarterly_gdp = quarterly_gdp[4:]
